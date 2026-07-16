@@ -111,6 +111,7 @@ supabase/
 - `(user_id, ingredient_id)`에 유니크 제약을 걸어 동일 재료 중복 등록을 방지합니다.
 - 유통기한(F10), 수량은 MVP 범위에 없으므로 지금 컬럼을 추가하지 않습니다. 필요해지면 마이그레이션으로 추가합니다.
 
+
 ### 4.3 `recipes_cache` — CSV 파일 기반 레시피 데이터
 
 | 필드 | 타입 | 설명 |
@@ -127,6 +128,7 @@ supabase/
 - 참조 데이터이므로 RLS는 "전체 조회 허용, 쓰기는 서비스 role(초기화 스크립트)만"으로 설정합니다.
 - 매칭에 쓰이는 `parsed_ingredients`는 원재료명 문자열 배열이 아니라, 로드 단계에서 `ingredients_master`(및 `synonyms`)와 대사(alias resolve)하여 **`ingredients_master.id` 배열도 함께 저장**하는 것을 권장합니다(예: `matched_ingredient_ids uuid[]`). 매칭 시점에 매번 문자열 유사도 계산을 하지 않고 ID 배열 교집합 연산만 하도록 하여 쿼리 성능을 확보합니다.
 
+
 ### 4.4 관계 및 RLS
 
 - `user` : `user_fridge` = 1:N, `user_fridge` : `ingredients_master` = N:1 (PRD 6.2절과 동일)
@@ -141,6 +143,7 @@ supabase/
 - 서버(Route Handler, Server Action, Server Component)는 `lib/supabase/server.ts`의 쿠키 기반 클라이언트로 세션을 읽습니다. 클라이언트가 보낸 사용자 ID를 신뢰하지 않고 항상 세션에서 추출합니다.
 - `user_fridge` 관련 모든 API는 진입 시: 세션 확인(401) → 요청 대상 레코드의 소유자 확인(403) 순으로 검사합니다.
 - `service_role` 키는 서버 전용 환경변수로만 사용하며(예: `scripts/load-recipes-from-csv.ts` CSV 로드 작업), 클라이언트에 노출하지 않습니다.
+
 
 ---
 
@@ -207,6 +210,7 @@ export function fail(code: string, message: string): ApiError {
 - 예상 가능한 예외는 커스텀 에러 클래스(`lib/utils/errors.ts`)로 던지고 공통 catch에서 매핑, 예상치 못한 에러는 로그 후 500 + 일반화된 메시지만 반환합니다(내부 정보 노출 금지).
 
 ---
+
 
 ## 7. CSV 파일 기반 레시피 데이터 로딩
 
@@ -276,6 +280,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJxxx...
 
 - 배포: Vercel(Next.js) + Supabase(DB/Auth)
 - CSV 파일 로드: 초기화 시(프로젝트 최초 배포 후) `scripts/load-recipes-from-csv.ts`를 실행하여 recipes_cache에 데이터 로드 (1회만 필요)
+
 - DB 마이그레이션은 코드 배포 전에 적용
 
 ---

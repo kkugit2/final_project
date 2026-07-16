@@ -426,6 +426,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJxxx...
 
 # Supabase (서버만, .local만 설정)
 SUPABASE_SERVICE_ROLE_KEY=eyJxxx...
+
 ```
 
 `.env.local`은 `.gitignore`에 포함, `.env.example`에 빈 값으로 기록.
@@ -451,12 +452,14 @@ supabase migration new migration_name
 supabase db push
 ```
 
+
 ### CSV 파일 로드 (초기화)
 ```bash
 # 로컬에서 수동 실행 (최초 1회)
 npx ts-node scripts/load-recipes-from-csv.ts
 
 # 또는 배포 후 DB 세팅이 완료되면 실행
+
 ```
 
 ---
