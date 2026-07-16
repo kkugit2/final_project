@@ -15,7 +15,7 @@
 - **프론트엔드/백엔드**: Next.js (App Router, 풀스택)
 - **인증**: Supabase Auth (이메일 기반)
 - **DB**: Supabase (PostgreSQL)
-- **외부 API**: 식품의약품안전처 COOKRCP01 (공공 레시피 DB)
+- **레시피 데이터**: CSV 파일 (food_recipes_data.csv, 1,146개 레시피)
 - **배포**: Vercel
 - **언어**: TypeScript (strict mode) + Zod (검증)
 
@@ -49,7 +49,7 @@ lib/
     fridge-service.ts                  # user_fridge CRUD
     recipe-service.ts                  # recipes_cache 조회
     recipe-matching.ts                 # 보유-레시피 매칭 계산 (순수 함수)
-    external-recipe-api.ts             # 식약처 API + 캐싱
+    csv-recipe-loader.ts               # CSV 파일에서 recipes_cache로 로드
   validators/
     fridge.schema.ts
     recipe.schema.ts
@@ -59,7 +59,7 @@ lib/
 types/
   database.types.ts                    # Supabase CLI 자동 생성 (수동 수정 금지)
 scripts/
-  sync-recipes.ts                      # 식약처 API 배치 적재
+  load-recipes-from-csv.ts             # CSV 파일에서 recipes_cache로 로드 (초기화 시 1회)
 ```
 
 ---
@@ -344,18 +344,18 @@ const userOwnedWithBasic = new Set([
 ]);
 ```
 
-### 6.4 식약처 API 캐싱
-**실시간 호출 금지**, 배치 방식만 사용:
+### 6.4 CSV 파일 기반 레시피 데이터 로딩
+**실시간 API 호출 불필요**, CSV 파일 기반 방식 사용:
 
 ```ts
-// scripts/sync-recipes.ts (필요 시에만 수동 실행)
-// 1. 식약처 API에서 전체 레시피 가져오기
+// scripts/load-recipes-from-csv.ts (초기화 시 1회만 실행)
+// 1. food_recipes_data.csv 파일 읽기
 // 2. RCP_PARTS_DTLS 파싱 + ingredients_master와 대사
 // 3. matched_ingredient_ids 계산
-// 4. recipes_cache에 upsert
+// 4. recipes_cache에 로드
 
 // 배포 후 추천 요청은 모두 recipes_cache 조회
-// GET /api/recipes/recommend → recipes_cache 스캔만 (API 호출 금지)
+// GET /api/recipes/recommend → recipes_cache 스캔만 (CSV 재로드 불필요)
 ```
 
 ---
@@ -364,13 +364,13 @@ const userOwnedWithBasic = new Set([
 
 ### 7.1 보안 체크리스트
 - [ ] `SUPABASE_SERVICE_ROLE_KEY`가 클라이언트 코드에 노출되지 않는가?
-- [ ] `FOOD_SAFETY_API_KEY`가 `NEXT_PUBLIC_` 없이 서버 환경변수인가?
+- [ ] CSV 파일(food_recipes_data.csv)이 공개 디렉토리에 노출되지 않는가?
 - [ ] 모든 API에서 세션 확인 후 소유자 확인을 수행하는가?
 - [ ] 모든 입력값이 Zod로 검증되는가?
 - [ ] 에러 응답에 스택트레이스/쿼리문이 노출되지 않는가?
 
 ### 7.2 성능 고려사항
-- **레시피 캐싱**: 식약처 API는 배치로만, 추천 요청은 `recipes_cache` 조회 (한 번의 DB 쿼리)
+- **레시피 데이터**: CSV 파일에서 사전 로드된 recipes_cache, 추천 요청은 DB 조회만 (한 번의 DB 쿼리)
 - **재료 검색**: `ingredients_master.name`/`synonyms`에 인덱스 (pg_trgm 또는 GIN)
 - **페이지네이션**: `GET /api/recipes/recommend`는 `limit`/`offset` 파라미터 지원 (레시피 수 증가 시 대비)
 - **모바일 최적화**: API 응답 페이로드 최소화 (목록은 필수 필드만, 상세는 상세 조회 API에서)
@@ -426,12 +426,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJxxx...
 
 # Supabase (서버만, .local만 설정)
 SUPABASE_SERVICE_ROLE_KEY=eyJxxx...
-
-# 식약처 API (서버만)
-FOOD_SAFETY_API_KEY=xxxxx
 ```
 
 `.env.local`은 `.gitignore`에 포함, `.env.example`에 빈 값으로 기록.
+
+참고: `FOOD_SAFETY_API_KEY`는 CSV 파일 기반 방식으로 변경되어 더 이상 필요하지 않습니다.
 
 ---
 
@@ -452,12 +451,12 @@ supabase migration new migration_name
 supabase db push
 ```
 
-### 식약처 API 배치 실행
+### CSV 파일 로드 (초기화)
 ```bash
-# 로컬에서 수동 실행
-npx ts-node scripts/sync-recipes.ts
+# 로컬에서 수동 실행 (최초 1회)
+npx ts-node scripts/load-recipes-from-csv.ts
 
-# 또는 Vercel 환경에서 시간 기반 실행 (나중에 설정)
+# 또는 배포 후 DB 세팅이 완료되면 실행
 ```
 
 ---
