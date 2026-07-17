@@ -1,498 +1,217 @@
-# CLAUDE.md — 냉장고 재료 기반 레시피 추천 서비스
+# CLAUDE.md - 냉장고 재료 기반 레시피 추천 서비스 개발 지침
 
-개발자(Claude Code)가 이 프로젝트의 코드를 작성할 때 따라야 할 규칙과 원칙을 정의합니다.  
-기반 문서: `PRD.md` (v1.0), `UI-UX-Guideline.md` (v1.0), `Backend-Guideline.md` (v1.0)
+Claude Code로 이 프로젝트를 작업할 때 반드시 참고하세요.
+
+> 이 문서는 PRD_.md, BACKEND-INTEGRATED.md, FRONTEND.md, UI-UX-Guideline.md와 상충하지 않도록 다시 작성되었습니다. 이전 버전의 CLAUDE.md는 Vanilla JS + localStorage + 로컬 인증 폴백 구조를 전제로 하고 있었으나, 이는 프로젝트 전체 방향(Next.js + Supabase 서버 저장)과 맞지 않아 전면 교체되었습니다.
 
 ---
 
 ## 1. 프로젝트 개요
 
-**서비스**: 1인 가구 직장인이 보유한 식재료로 만들 수 있는 요리를 추천받는 웹/모바일 서비스
+**서비스명(가칭)**: 냉장고 재료 기반 레시피 추천 서비스
 
-**MVP 범위 (P0)**: 회원가입/로그인 → 식재료 등록 → 나의 냉장고 → 레시피 추천 대시보드 → 레시피 상세 조회
+사용자가 보유한 식재료를 검색해서 등록하면, 실제로 만들 수 있는 요리(완전 보유) 또는 조금만 더 사면 만들 수 있는 요리(일부 부족)를 추천해주는 웹/모바일 서비스입니다. 레시피 데이터는 식품의약품안전처 공공데이터를 CSV로 받아 서버에 1회 적재해서 사용합니다.
 
-**기술 스택**:
-- **프론트엔드/백엔드**: Next.js (App Router, 풀스택)
-- **인증**: Supabase Auth (이메일 기반)
-- **DB**: Supabase (PostgreSQL)
-- **레시피 데이터**: CSV 파일 (food_recipes_data.csv, 1,146개 레시피)
+**관련 문서 (반드시 함께 참고)**
+- `PRD_.md` — 전체 요구사항, 기능 목록(F1~F20), 개발 우선순위
+- `BACKEND-INTEGRATED.md` — DB 스키마, API 명세, 비즈니스 로직, 보안/RLS
+- `FRONTEND.md` — 화면 구성, 상태 관리, 컴포넌트 목록
+- `UI-UX-Guideline.md` — 컬러(Steel Blue 단일 계열), 타이포그래피, 컴포넌트 스펙
+
+이 문서(CLAUDE.md)는 위 네 문서의 요약이 아니라, **Claude Code가 실제 코드를 짤 때 참고할 실무 규칙**만 담습니다. 기능/화면 스펙이 궁금하면 위 문서를 먼저 확인하세요.
+
+---
+
+## 2. 기술 스택 (PRD_.md 5장 기준)
+
+- **프론트엔드 + 백엔드**: Next.js (App Router, 풀스택) — **Vanilla JS/정적 HTML 방식이 아님**
+- **인증**: Supabase Auth (이메일 기반) — **로컬 폴백 인증 없음** (비밀번호를 브라우저에 저장하는 방식은 사용하지 않음)
+- **데이터베이스**: Supabase PostgreSQL
+- **레시피 데이터**: 식약처 공공데이터 CSV → **서버에서 1회 적재 스크립트로 `recipes` 테이블에 저장** (클라이언트가 CSV를 직접 fetch/파싱하지 않음)
 - **배포**: Vercel
-- **언어**: TypeScript (strict mode) + Zod (검증)
+
+> 별도 백엔드 서버(Express, NestJS 등)를 두지 않습니다. "백엔드"는 Next.js API Route를 의미합니다.
 
 ---
 
-## 2. 코드 컨벤션
+## 3. 핵심 아키텍처
 
-### 파일명 및 네이밍
-- 파일명: `kebab-case.ts` (예: `recipe-matching.ts`, `api-response.ts`)
-- 함수/변수: `camelCase`
-- 타입/인터페이스: `PascalCase`
-- 상수: `UPPER_SNAKE_CASE`
+### 3.1 데이터 흐름
+```
+[사용자] 재료 검색/등록
+  ↓
+[Next.js 프론트] fetch로 API Route 호출
+  ↓
+[Next.js API Route] Supabase 세션 검증 → DB 조회/기록
+  ↓
+[Supabase Postgres] user_fridge, recipes, ingredients_master 등
+```
 
-### 폴더 구조 (반드시 준수)
-```
-app/
-  api/
-    ingredients/search/route.ts        # GET: 식재료 검색
-    fridge/
-      route.ts                         # GET: 목록, POST: 추가
-      [id]/route.ts                    # PATCH: 토글, DELETE: 삭제
-    recipes/
-      recommend/route.ts               # GET: 추천 목록
-      [id]/route.ts                    # GET: 상세 조회
-lib/
-  supabase/
-    server.ts                          # 서버용 Supabase 클라이언트
-    client.ts                          # 브라우저용 Supabase 클라이언트
-  services/
-    ingredient-service.ts              # ingredients_master 검색
-    fridge-service.ts                  # user_fridge CRUD
-    recipe-service.ts                  # recipes_cache 조회
-    recipe-matching.ts                 # 보유-레시피 매칭 계산 (순수 함수)
-    csv-recipe-loader.ts               # CSV 파일에서 recipes_cache로 로드
-  validators/
-    fridge.schema.ts
-    recipe.schema.ts
-  utils/
-    api-response.ts                    # { success, data/error } 포맷
-    errors.ts                          # 커스텀 에러 클래스
-types/
-  database.types.ts                    # Supabase CLI 자동 생성 (수동 수정 금지)
-scripts/
-  load-recipes-from-csv.ts             # CSV 파일에서 recipes_cache로 로드 (초기화 시 1회)
-```
+- 레시피 매칭(완전 보유/일부 부족 계산)은 **API Route 안에서 서버 사이드로 계산**해서 클라이언트에 결과만 내려줌 (클라이언트가 직접 매칭 로직을 돌리지 않음)
+- 재료 검색은 부분 문자열 매칭(`ILIKE '%검색어%'` 또는 동등 로직). 마스터 DB 규모가 작으면 프론트 캐싱도 가능(FRONTEND.md 참고)
+
+### 3.2 인증
+- Supabase Auth만 사용. 네트워크 오류 시에도 로컬 계정으로 우회하지 않고 "잠시 후 다시 시도" 안내만 제공
+- 모든 API Route는 로그인 세션이 없으면 401 반환
+
+### 3.3 데이터 저장
+- 사용자 냉장고 데이터는 **반드시 Supabase `user_fridge` 테이블**에 저장 (localStorage에 원본 데이터를 저장하지 않음)
+- 클라이언트 상태 관리(React Query/SWR 등)는 서버 데이터의 캐시일 뿐, 소스 오브 트루스는 항상 DB
 
 ---
 
-## 3. 아키텍처 원칙
+## 4. 데이터베이스 스키마 (요약, 상세는 BACKEND-INTEGRATED.md 2장)
 
-### 계층 분리
-```
-[클라이언트 컴포넌트 (React)]
-         ↓
-[Route Handler / Server Action]
-    (검증 → 인증 → 인가)
-         ↓
-[서비스 계층 (lib/services/)]
-    (비즈니스 로직 + DB/외부 API)
-         ↓
-[Supabase / 외부 API]
-```
+| 테이블 | 용도 |
+|---|---|
+| `auth.users` | Supabase Auth 기본 제공 |
+| `user_profiles` | 건강관리 목표(goal, daily_calorie_target) |
+| `user_preferences` | 수량 관리 사용 여부, 유통기한 알림 여부 등 환경설정 |
+| `ingredients_master` | 검색용 재료 마스터 DB (동의어, 기본 조미료 여부, 기본 유통기한) |
+| `user_fridge` | 사용자별 보유 재료 (마스터 재료 또는 커스텀 재료, 보유 여부, 유통기한) |
+| `recipes` | CSV 적재 결과 (재료 원문, 정규화된 재료 배열, 조리 순서, 영양정보) |
+| `user_favorites` | 즐겨찾기 |
+| `recipe_views` | 최근 조회 기록 |
+| `recipe_completions` | "이 요리 완성했어요" 기록 |
+| `ingredient_consumption_log` | 재료 소진 이력 (통계용) |
 
-**핵심 원칙**:
-- Route Handler는 **입력 검증 → 세션 확인 → 서비스 호출 → 응답 변환**만 담당
-- 복잡한 로직은 `lib/services/`로 분리
-- **클라이언트 컴포넌트에서 Supabase에 직접 쓰기 작업 금지** (Server Action 또는 Route Handler 사용)
-
-### 데이터베이스 쓰기 권한
-- `user_fridge`: RLS 활성화, `user_id = auth.uid()` 정책 (사용자는 자신의 데이터만 수정)
-- `ingredients_master`, `recipes_cache`: 쓰기는 `service_role`만 (배치 스크립트)
+**모든 사용자별 테이블에는 Row-Level Security(RLS)를 반드시 적용**하고, `auth.uid() = user_id` 조건으로 본인 데이터만 접근 가능하게 합니다. (BACKEND-INTEGRATED.md 2.10 참고)
 
 ---
 
-## 4. 주요 개발 원칙
+## 5. 핵심 기능 (요약, 상세는 PRD_.md 3장 F1~F20)
 
-### 4.1 요청 입력 검증
-**모든** Route Handler/Server Action에서 Zod 스키마로 검증:
+**MVP(P0)**: 회원가입/로그인, 검색 기반 재료 등록(부분 문자열 매칭 + 직접 추가), 나의 냉장고, 기본 조미료 자동 처리, 레시피 추천 대시보드/필터, 재료 매칭, 레시피 상세, 플랫폼별 네비게이션(웹 상단/모바일 하단)
 
-```ts
-// lib/validators/fridge.schema.ts
-import { z } from "zod";
+**P1**: 유통기한 관리, 레시피 완성 처리(재료 자동 차감), 즐겨찾기, 최근 조회, 마이페이지 통계, 영양 정보 표시, 하루 섭취량 트래킹
 
-export const addIngredientSchema = z.object({
-  ingredientId: z.string().uuid("Invalid ingredient ID"),
-});
+**P2**: 목표 기반 맞춤 식단 필터, 영수증 OCR(보류 중), 바코드 스캔, 네이티브 앱 전환
 
-// app/api/fridge/route.ts
-import { addIngredientSchema } from "@/lib/validators/fridge.schema";
-
-export async function POST(request: Request) {
-  const body = await request.json();
-  const parsed = addIngredientSchema.parse(body); // 검증 통과 또는 throw
-  // ...
-}
-```
-
-### 4.2 표준 응답 포맷
-**모든 API 응답**은 아래 형식을 따름:
-
-```ts
-// 성공
-{ success: true, data: { /* 페이로드 */ } }
-
-// 실패
-{ success: false, error: { code: "USER_NOT_FOUND", message: "사용자가 없습니다." } }
-```
-
-상태 코드:
-- `200`: 조회/성공
-- `201`: 생성 성공
-- `400`: 검증 실패
-- `401`: 미인증
-- `403`: 권한 없음 (다른 사용자 데이터 접근 시도)
-- `404`: 리소스 없음
-- `500`: 서버 오류
-
-### 4.3 에러 처리
-예상 가능한 에러는 커스텀 클래스로 throw:
-
-```ts
-// lib/utils/errors.ts
-export class AppError extends Error {
-  constructor(
-    public code: string,
-    message: string,
-    public statusCode: number = 400
-  ) {
-    super(message);
-  }
-}
-
-// Route Handler에서
-try {
-  // ...
-} catch (error) {
-  if (error instanceof AppError) {
-    return Response.json(fail(error.code, error.message), {
-      status: error.statusCode,
-    });
-  }
-  // 예상치 못한 에러는 로그 후 일반화된 메시지만 반환
-  console.error(error);
-  return Response.json(fail("INTERNAL_ERROR", "서버 오류 발생"), {
-    status: 500,
-  });
-}
-```
-
-### 4.4 인증/인가
-모든 사용자 데이터 접근 API는:
-
-1. **세션 확인**: `auth.uid()` 또는 401 에러
-2. **소유자 확인**: 요청 대상 레코드의 `user_id`와 현재 사용자 비교, 미일치 시 403 에러
-
-```ts
-// app/api/fridge/[id]/route.ts
-export async function PATCH(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  // 1. 세션 확인
-  const { data: session } = await supabase.auth.getSession();
-  if (!session?.user) {
-    return Response.json(fail("UNAUTHORIZED", "로그인이 필요합니다."), {
-      status: 401,
-    });
-  }
-
-  // 2. 소유자 확인
-  const { data: fridgeItem } = await supabase
-    .from("user_fridge")
-    .select("user_id")
-    .eq("id", params.id)
-    .single();
-
-  if (!fridgeItem || fridgeItem.user_id !== session.user.id) {
-    return Response.json(fail("FORBIDDEN", "권한이 없습니다."), {
-      status: 403,
-    });
-  }
-
-  // 3. 비즈니스 로직
-  // ...
-}
-```
-
-### 4.5 레시피 매칭 로직
-**핵심**: 매칭 결과는 DB에 저장하지 않고 **매 요청마다 계산**
-
-```ts
-// lib/services/recipe-matching.ts (순수 함수)
-export function calculateRecipeMatching(
-  userOwnedIngredientIds: string[], // user_fridge에서 is_owned=true인 ID들
-  basicSeasoningIds: string[],       // ingredients_master에서 is_basic_seasoning=true인 ID들
-  recipe: RecipeCache              // recipes_cache 레코드
-): MatchingResult {
-  const availableIds = new Set([...userOwnedIngredientIds, ...basicSeasoningIds]);
-  const requiredIds = new Set(recipe.matched_ingredient_ids); // 레시피가 필요한 재료 ID들
-
-  const missingIds = [...requiredIds].filter(id => !availableIds.has(id));
-  
-  return {
-    isComplete: missingIds.length === 0,
-    missingCount: missingIds.length,
-    missingIngredientIds: missingIds,
-  };
-}
-```
-
-**사용처**: `GET /api/recipes/recommend`에서 모든 레시피를 순회하며 매칭 계산 후 정렬
+> 레시피 추천은 **규칙 기반 문자열/동의어 매칭**입니다. "AI 기반 추천"이라는 표현은 쓰지 않습니다 — 실제로는 ML 모델이 아니라 결정적 매칭 로직이라 표현이 과장되면 안 됩니다.
 
 ---
 
-## 5. UI/디자인 구현 가이드
+## 6. 재료명 정규화 파이프라인 (CSV 적재 스크립트 작성 시 필수 참고)
 
-### 5.1 컴포넌트 구조
-모든 컴포넌트는 `app/components/`에 배치:
+`scripts/import-recipes.ts` 같은 적재 스크립트를 작성할 때, CSV의 비정형 재료 텍스트를 아래 순서로 정규화합니다 (BACKEND-INTEGRATED.md 3.1 상세 참고):
 
-```
-components/
-  common/
-    Button.tsx               # 4가지 상태 지원 (Primary/Secondary/Danger + disabled)
-    Input.tsx                # 44px 높이, 포커스 스타일
-    Badge.tsx                # 매칭 상태 배지 (완전/부분/새로움)
-    Card.tsx                 # 레시피 카드 (이미지 16:9, 내용 구조 고정)
-  layout/
-    BottomNav.tsx            # 탭 3개 (나의 냉장고 | 레시피 추천 | 마이페이지)
-    Header.tsx
-  features/
-    FridgeList.tsx           # 카테고리별 재료 목록
-    RecipeDashboard.tsx      # 레시피 카드 그리드 + 필터
-    RecipeDetail.tsx         # 상세 화면
-```
+1. 특수문자 제거 → 2. 띄어쓰기 정규화 → 3. 수량/단위 라벨 제거 → 4. 보존할 수식어 추출("다진", "말린") → 5. 제거할 수식어 처리("구운", "삶은") → 6. 중복 단어 제거 → 7. 후행 단어 정렬("멸치육수" 등) → 8. `ingredients_master.synonyms` 기준 동의어 통합
 
-### 5.2 스타일링 원칙
-- **프레임워크**: Tailwind CSS (권장) 또는 CSS Modules
-- **반응형**: Tailwind 기본값 (sm: 640px, md: 768px, lg: 1024px)
-- **그리드 여백**: 8px 기본 단위 (8, 16, 24, 32, 48px)
-
-**컬러 토큰** (CSS 변수 또는 Tailwind config):
-```js
-// tailwind.config.ts
-colors: {
-  primary: "#10B981",      // Fresh Green
-  secondary: "#0EA5E9",    // Sky Blue
-  accent: "#F97316",       // Warm Orange
-  success: "#059669",      // 완전 매칭
-  warning: "#D97706",      // 부족 상태
-  error: "#DC2626",        // 삭제
-  // 중성색
-  darkGray: "#1F2937",
-  lightGray: "#F3F4F6",
-  disabledGray: "#9CA3AF",
-}
-```
-
-### 5.3 반응형 레이아웃
-- **모바일 (320px~767px)**: 하단 탭 네비, 단일 컬럼, 16px 패딩
-- **태블릿 (768px~1023px)**: 2컬럼 카드, 24px 패딩
-- **데스크톱 (1024px+)**: 3컬럼 카드, 32px 패딩, 최대 너비 1200px
-
-### 5.4 접근성 준수
-- **명도 대비**: 본문 4.5:1 이상 (WCAG AA)
-- **터치 대상**: 44px 이상 (버튼, 토글, 탭)
-- **포커스 표시**: 2px `#0EA5E9` 테두리
-- **의미론적 마크업**: `<button>`, `<label for="">`, `alt` 텍스트, `aria-label`
-
-```tsx
-// 나쁜 예
-<div onClick={handleClick}>추가</div>
-
-// 좋은 예
-<button onClick={handleClick} className="h-11 w-11">
-  + 추가
-</button>
-```
-
-### 5.5 애니메이션
-- **기본 속도**: 200ms
-- **ease 함수**: `cubic-bezier(0.4, 0, 0.2, 1)`
-- **피해야 할 것**: 2초 이상의 과도한 애니메이션, 깜빡거림
+완벽한 자동화보다는 "이 단계로도 매칭 안 되는 재료는 수동으로 synonyms에 추가"하는 반복 개선 방식을 씁니다.
 
 ---
 
-## 6. 데이터베이스 및 API 원칙
-
-### 6.1 스키마 변경
-**모든 스키마 변경은 SQL 마이그레이션으로 관리**:
+## 7. 파일/폴더 구조 (Next.js App Router 기준 예시)
 
 ```
-supabase/
-  migrations/
-    20260716120000_create_initial_schema.sql
-    20260716130000_add_indexes.sql
-```
-
-Supabase 대시보드에서 직접 수정하지 말 것.
-
-### 6.2 `recipes_cache` 구조의 핵심
-```ts
-{
-  id: "12345",                    // 식약처 RCP_SEQ (PK)
-  name: "떡볶이",
-  raw_ingredients_text: "떡 500g, 고추장 2스푼...",  // 원본 API 응답
-  parsed_ingredients: ["떡", "고추장", ...],         // 파싱된 재료명
-  matched_ingredient_ids: ["uuid1", "uuid2", ...],   // ← 매칭 시 필수!
-  cooking_steps: { /* 조리 순서 */ },
-  image_url: "https://...",
-  fetched_at: "2026-07-16T...",
-}
-```
-
-`matched_ingredient_ids`를 통해 매칭 계산 시 **문자열 유사도 계산 없이 ID 배열 교집합만** 사용.
-
-### 6.3 기본 조미료 (F4)
-```ts
-// ingredients_master에서 is_basic_seasoning = true
-// 예: 설탕, 소금, 간장, 고추장, 참기름, 깨 등
-
-// 매칭 시 항상 사용자가 보유한 것으로 간주
-const basicSeasoningIds = await getBasicSeasoningIds();
-const userOwnedWithBasic = new Set([
-  ...userOwnedIngredientIds,
-  ...basicSeasoningIds,
-]);
-```
-
-### 6.4 CSV 파일 기반 레시피 데이터 로딩
-**실시간 API 호출 불필요**, CSV 파일 기반 방식 사용:
-
-```ts
-// scripts/load-recipes-from-csv.ts (초기화 시 1회만 실행)
-// 1. food_recipes_data.csv 파일 읽기
-// 2. RCP_PARTS_DTLS 파싱 + ingredients_master와 대사
-// 3. matched_ingredient_ids 계산
-// 4. recipes_cache에 로드
-
-// 배포 후 추천 요청은 모두 recipes_cache 조회
-// GET /api/recipes/recommend → recipes_cache 스캔만 (CSV 재로드 불필요)
+project-root/
+├── app/
+│   ├── fridge/              # 나의 냉장고 화면
+│   ├── recipes/             # 레시피 추천 화면
+│   ├── mypage/               # 마이페이지
+│   └── api/
+│       ├── fridge/
+│       ├── ingredients/search/
+│       ├── recipes/
+│       └── mypage/summary/
+├── components/                # FRONTEND.md 6장 컴포넌트 목록 참고
+├── lib/
+│   └── supabase/              # Supabase 클라이언트/세션 유틸
+├── scripts/
+│   └── import-recipes.ts      # CSV → recipes 테이블 1회 적재 스크립트
+├── .env.local                 # Supabase 키 (Git 제외 필수)
+├── .gitignore
+├── PRD_.md
+├── BACKEND-INTEGRATED.md
+├── FRONTEND.md
+├── UI-UX-Guideline.md
+└── CLAUDE.md                  # 이 파일
 ```
 
 ---
 
-## 7. 보안 및 성능
+## 8. 코딩 규칙
 
-### 7.1 보안 체크리스트
-- [ ] `SUPABASE_SERVICE_ROLE_KEY`가 클라이언트 코드에 노출되지 않는가?
-- [ ] CSV 파일(food_recipes_data.csv)이 공개 디렉토리에 노출되지 않는가?
-- [ ] 모든 API에서 세션 확인 후 소유자 확인을 수행하는가?
-- [ ] 모든 입력값이 Zod로 검증되는가?
-- [ ] 에러 응답에 스택트레이스/쿼리문이 노출되지 않는가?
+### 8.1 변수명/함수명
+- 한글 주석은 괜찮지만 코드(변수명, 함수명)는 영문으로 작성
+- 의도가 드러나는 이름 사용
+  ```typescript
+  // ✅ Good
+  const ingredientSynonyms = {...};
+  function normalizeIngredient(name: string): string {...}
 
-### 7.2 성능 고려사항
-- **레시피 데이터**: CSV 파일에서 사전 로드된 recipes_cache, 추천 요청은 DB 조회만 (한 번의 DB 쿼리)
-- **재료 검색**: `ingredients_master.name`/`synonyms`에 인덱스 (pg_trgm 또는 GIN)
-- **페이지네이션**: `GET /api/recipes/recommend`는 `limit`/`offset` 파라미터 지원 (레시피 수 증가 시 대비)
-- **모바일 최적화**: API 응답 페이로드 최소화 (목록은 필수 필드만, 상세는 상세 조회 API에서)
+  // ❌ Avoid
+  const syns = {...};
+  function norm(n: string) {...}
+  ```
 
----
+### 8.2 컴포넌트/함수 구성
+- 한 컴포넌트/함수 = 한 가지 책임
+- FRONTEND.md 6장에 정의된 컴포넌트 이름을 그대로 사용 (`FridgeCategorySection`, `RecipeCard` 등)
 
-## 8. 개발 체크리스트
+### 8.3 주석
+- WHAT이 아니라 WHY를 설명
+  ```typescript
+  // ✅ Good
+  // 기본 조미료는 사용자가 등록하지 않아도 항상 보유로 간주해서 매칭 누락을 막음
+  if (ingredient.is_basic_seasoning) return true;
 
-### 회원가입/로그인 (F1)
-- [ ] Supabase Auth 클라이언트 `signUp`/`signInWithPassword` 구현
-- [ ] 세션 만료 시 자동 갱신 (middleware.ts)
-- [ ] 로그아웃 버튼
+  // ❌ Avoid
+  // is_basic_seasoning이 true면 true 반환
+  ```
 
-### 식재료 검색/등록 (F2)
-- [ ] `GET /api/ingredients/search?q=` 구현 (자동완성, 최대 10개)
-- [ ] `POST /api/fridge` 구현 (중복 체크)
-- [ ] 입력 포커스 시 드롭다운 표시
-
-### 나의 냉장고 (F3)
-- [ ] 카테고리별 그룹핑 표시
-- [ ] `PATCH /api/fridge/[id]` (보유 여부 토글)
-- [ ] `DELETE /api/fridge/[id]` (재료 삭제)
-- [ ] 재료 없을 때 빈 상태 UI
-
-### 기본 조미료 (F4)
-- [ ] `ingredients_master`에 `is_basic_seasoning` 플래그
-- [ ] 매칭 시 자동 포함
-
-### 레시피 추천 (F5, F6, F7)
-- [ ] `GET /api/recipes/recommend?filter=complete|partial|all` 구현
-- [ ] 완전 보유 → 부족 개수 적은 순 정렬
-- [ ] 각 카드에 매칭 배지 표시 (완전/부분)
-
-### 레시피 상세 (F8)
-- [ ] `GET /api/recipes/[id]` 구현
-- [ ] 전체 재료 목록 (보유/부족 강조)
-- [ ] 조리 순서 표시
-- [ ] 공유 버튼 (선택사항)
-
-### 반응형 웹/모바일 (F9)
-- [ ] 모바일 (320px) ~ 데스크톱 (1024px+) 테스트
-- [ ] 탭 네비게이션 (모바일) ↔ 사이드바 (데스크톱) 전환
-- [ ] 이미지 최적화 (next/image 활용)
+### 8.4 성능
+- 재료 검색: DB 인덱스 기반 `ILIKE` 쿼리 또는 (소규모일 때) 프론트 캐싱 + 클라이언트 필터링
+- 레시피 매칭: API Route 내 Set 기반 비교(O(n)) — 데이터 규모가 커지기 전까지는 충분
 
 ---
 
-## 9. 환경변수 (.env.local 예시)
+## 9. 보안 (BACKEND-INTEGRATED.md 6장 필수 준수)
 
-```
-# Supabase (클라이언트, 노출 가능)
-NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJxxx...
-
-# Supabase (서버만, .local만 설정)
-SUPABASE_SERVICE_ROLE_KEY=eyJxxx...
-
-```
-
-`.env.local`은 `.gitignore`에 포함, `.env.example`에 빈 값으로 기록.
-
-참고: `FOOD_SAFETY_API_KEY`는 CSV 파일 기반 방식으로 변경되어 더 이상 필요하지 않습니다.
+- API 키/Supabase 서비스 롤 키는 환경변수로만 관리, 코드에 하드코딩 금지
+- 비밀번호는 어떤 형태로도 클라이언트(localStorage 포함)에 저장하지 않음 — Supabase Auth 세션 토큰만 저장
+- 모든 사용자별 테이블에 RLS 적용 (4장 표 참고)
+- 통신은 HTTPS 기준
 
 ---
 
-## 10. 배포 및 운영
+## 10. 테스트 체크리스트
 
-### Vercel 배포
-```bash
-vercel deploy
-# 또는 git push → GitHub Actions 자동 배포
-```
+### 기능 테스트
+- [ ] 회원가입/로그인 (Supabase Auth만, 로컬 폴백 없음)
+- [ ] 재료 검색 (부분 문자열 매칭 — "파" 검색 시 양파/대파/실파 등 노출 확인)
+- [ ] 검색 결과 없어도 "직접 추가하기"로 커스텀 재료 등록 가능한지
+- [ ] 기본 조미료 자동 처리 (미등록 상태에서도 매칭에 누락되지 않는지)
+- [ ] 레시피 추천 필터(전체/완전 보유/일부 부족)
+- [ ] 레시피 완성 처리 시 재료 자동 차감 + 통계 반영
+- [ ] 즐겨찾기/최근 조회가 마이페이지에 정확히 반영되는지
+- [ ] RLS로 다른 사용자 데이터 접근이 차단되는지
 
-### DB 마이그레이션
-```bash
-# 로컬 개발
-supabase migration new migration_name
-
-# 원격 적용
-supabase db push
-```
-
-
-### CSV 파일 로드 (초기화)
-```bash
-# 로컬에서 수동 실행 (최초 1회)
-npx ts-node scripts/load-recipes-from-csv.ts
-
-# 또는 배포 후 DB 세팅이 완료되면 실행
-
-```
+### 브라우저/반응형
+- Chrome/Edge/Safari 최신 버전
+- 모바일(하단 탭) / 데스크톱(상단 네비게이션) 레이아웃 전환 확인
 
 ---
 
-## 11. 주의사항
+## 11. 배포 체크리스트 (BACKEND-INTEGRATED.md 7.1과 동일)
 
-### MVP 범위 (P0)만 구현
-- F1~F9만 구현, F10(유통기한)/F11(OCR)/F12(바코드)는 나중에
-- 미리 컬럼을 추가하거나 API를 만들지 말 것
-
-### 과도한 최적화 금지
-- 초기에는 레시피 캐싱(배치)만으로 충분
-- 사용자/레시피 수가 증가해서 성능 이슈가 생기면 그때 재평가
-
-### 에러 로깅
-- 예상 가능한 에러: 사용자에게 친화적인 메시지 반환
-- 예상치 못한 에러: 서버 로그에 기록, 사용자에게는 "일반적인 오류" 메시지만 반환
-
-### 테스트
-- Route Handler/API: 단위 테스트 (Vitest)
-- UI 컴포넌트: 스크린샷 테스트 (Storybook, Playwright)
-- 통합: E2E 테스트 (Playwright)
+- [ ] 환경변수 Vercel에 등록 (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`)
+- [ ] 전 테이블 RLS 정책 적용 확인
+- [ ] Supabase CORS 정책 확인
+- [ ] CSV 적재 스크립트 1회 실행 및 결과 검증 (자동 동기화 없음, 갱신 필요 시 수동 재실행)
+- [ ] API 키 하드코딩 여부 확인
+- [ ] HTTPS 적용 확인
 
 ---
 
-## 12. 변경 관리
+## 12. 주의사항
 
-이 문서를 변경할 때는:
-1. PR 설명에 변경 내용을 명시
-2. 연관된 `PRD.md`, `UI-UX-Guideline.md`, `Backend-Guideline.md`도 함께 갱신
+1. **범위 밖 기능 임의 구현 금지**: 영수증 OCR, 의학적 식이 제한 추천은 PRD_.md에서 명시적으로 보류/제외됨 — 요청 없이 구현하지 않음
+2. **디자인은 UI-UX-Guideline.md 그대로 따름**: 색상은 Steel Blue 단일 계열 + 아이스 그레이 뉴트럴. 상태 구분에 새로운 색을 추가하지 말고 채움/윤곽선/톤 농도로 표현
+3. **CSV 재적재는 수동**: CSV 파일이 갱신돼도 자동 반영되지 않으므로, 데이터 갱신이 필요하면 적재 스크립트를 다시 실행해야 함을 잊지 말 것
+4. **API 요청/응답 스키마**: BACKEND-INTEGRATED.md 5장 표 수준까지만 정의되어 있으므로, 구현 중 세부 필드가 필요하면 프론트와 협의해 확정
 
 ---
 
-**문서 버전**: v1.0  
-**작성일**: 2026-07-16  
-**마지막 수정일**: 2026-07-16
+**마지막 수정**: 2026-07-16
+**버전**: 2.0 (기존 Vanilla JS/localStorage 기준 문서를 Next.js/Supabase 기준으로 전면 교체)
