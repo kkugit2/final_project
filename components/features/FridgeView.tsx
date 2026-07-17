@@ -7,6 +7,8 @@ import { IngredientSearchPanel } from "./IngredientSearchPanel";
 import type { FridgeItemView } from "./IngredientToggleItem";
 
 const CUSTOM_CATEGORY_LABEL = "직접 추가한 재료";
+const STORAGE_LOCATIONS = ["냉장", "냉동", "실온"] as const;
+type StorageLocation = (typeof STORAGE_LOCATIONS)[number];
 
 interface IngredientRef {
   id: string;
@@ -19,6 +21,7 @@ interface FridgeItemRow {
   id: string;
   is_owned: boolean;
   expiry_date: string | null;
+  storage_location: StorageLocation;
   updated_at: string;
   custom_name: string | null;
   ingredient: IngredientRef | null;
@@ -37,6 +40,7 @@ function toItemView(row: FridgeItemRow): FridgeItemView & { category: string } {
 export function FridgeView({ initialItems }: { initialItems: FridgeItemRow[] }) {
   const [items, setItems] = useState(initialItems);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<StorageLocation>("실온");
 
   const existingIngredientIds = useMemo(
     () => new Set(items.map((item) => item.ingredient?.id).filter((id): id is string => Boolean(id))),
@@ -53,7 +57,9 @@ export function FridgeView({ initialItems }: { initialItems: FridgeItemRow[] }) 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          entry.type === "master" ? { ingredientId: entry.id } : { customName: entry.name }
+          entry.type === "master"
+            ? { ingredientId: entry.id, storageLocation: activeTab }
+            : { customName: entry.name, storageLocation: activeTab }
         ),
       });
       const json = await res.json();
@@ -111,15 +117,32 @@ export function FridgeView({ initialItems }: { initialItems: FridgeItemRow[] }) 
   const grouped = useMemo(() => {
     const map = new Map<string, (FridgeItemView & { category: string })[]>();
     for (const row of items) {
+      if (!row.is_owned || row.storage_location !== activeTab) continue;
       const view = toItemView(row);
       if (!map.has(view.category)) map.set(view.category, []);
       map.get(view.category)!.push(view);
     }
     return Array.from(map.entries());
-  }, [items]);
+  }, [items, activeTab]);
 
   return (
     <div className="flex flex-col gap-6">
+      <div className="flex gap-2 border-b border-border">
+        {STORAGE_LOCATIONS.map((location) => (
+          <button
+            key={location}
+            onClick={() => setActiveTab(location)}
+            className={`px-4 py-2 font-medium transition-colors ${
+              activeTab === location
+                ? "border-b-2 border-primary text-primary"
+                : "text-darkGray hover:text-primary"
+            }`}
+          >
+            {location}
+          </button>
+        ))}
+      </div>
+
       <div className="flex justify-end">
         <Button type="button" onClick={() => setPanelOpen((prev) => !prev)}>
           {panelOpen ? "닫기" : "+ 재료 추가"}
@@ -133,9 +156,11 @@ export function FridgeView({ initialItems }: { initialItems: FridgeItemRow[] }) 
         />
       )}
 
-      {items.length === 0 ? (
+      {grouped.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-white py-16 text-center text-disabledGray">
-          아직 등록된 재료가 없어요. 위의 &apos;재료 추가&apos; 버튼으로 등록해보세요.
+          {items.length === 0
+            ? "아직 등록된 재료가 없어요. 위의 '재료 추가' 버튼으로 등록해보세요."
+            : `${activeTab}에 등록된 재료가 없어요.`}
         </div>
       ) : (
         grouped.map(([category, categoryItems]) => (

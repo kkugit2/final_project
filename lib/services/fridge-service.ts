@@ -3,7 +3,7 @@ import type { Database } from "@/types/database.types";
 import { NotFoundError, ConflictError } from "@/lib/utils/errors";
 
 const FRIDGE_ITEM_COLUMNS =
-  "id, is_owned, expiry_date, updated_at, custom_name, ingredient:ingredients_master(id, name, category, is_basic_seasoning)";
+  "id, is_owned, expiry_date, storage_location, updated_at, custom_name, ingredient:ingredients_master(id, name, category, is_basic_seasoning)";
 
 export async function listFridgeItems(supabase: SupabaseClient<Database>, userId: string) {
   const { data, error } = await supabase
@@ -36,6 +36,7 @@ export interface AddFridgeItemParams {
   ingredientId?: string;
   customName?: string;
   expiryDate?: string | null;
+  storageLocation?: "냉장" | "냉동" | "실온";
 }
 
 export async function addFridgeItem(
@@ -43,6 +44,8 @@ export async function addFridgeItem(
   userId: string,
   params: AddFridgeItemParams
 ) {
+  const storageLocation = params.storageLocation ?? "냉장";
+
   if (params.ingredientId) {
     const expiryDate =
       params.expiryDate !== undefined
@@ -57,6 +60,7 @@ export async function addFridgeItem(
           ingredient_id: params.ingredientId,
           is_owned: true,
           expiry_date: expiryDate,
+          storage_location: storageLocation,
         },
         { onConflict: "user_id,ingredient_id" }
       )
@@ -71,7 +75,6 @@ export async function addFridgeItem(
     return data;
   }
 
-  // 검색 결과에 없어 사용자가 직접 입력한 커스텀 재료 (F2)
   const { data, error } = await supabase
     .from("user_fridge")
     .insert({
@@ -79,6 +82,7 @@ export async function addFridgeItem(
       custom_name: params.customName,
       is_owned: true,
       expiry_date: params.expiryDate ?? null,
+      storage_location: storageLocation,
     })
     .select(FRIDGE_ITEM_COLUMNS)
     .single();
@@ -136,4 +140,30 @@ export async function updateFridgeItem(
 export async function deleteFridgeItem(supabase: SupabaseClient<Database>, id: string) {
   const { error } = await supabase.from("user_fridge").delete().eq("id", id);
   if (error) throw error;
+}
+
+export async function initializeBasicSeasonings(
+  supabase: SupabaseClient<Database>,
+  userId: string
+) {
+  const { data: basicSeasonings, error: fetchError } = await supabase
+    .from("ingredients_master")
+    .select("id")
+    .eq("is_basic_seasoning", true);
+
+  if (fetchError) throw fetchError;
+  if (!basicSeasonings || basicSeasonings.length === 0) return;
+
+  const { error: upsertError } = await supabase.from("user_fridge").upsert(
+    basicSeasonings.map((s) => ({
+      user_id: userId,
+      ingredient_id: s.id,
+      is_owned: true,
+      expiry_date: null,
+      storage_location: "실온",
+    })),
+    { onConflict: "user_id,ingredient_id" }
+  );
+
+  if (upsertError) throw upsertError;
 }

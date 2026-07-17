@@ -8,6 +8,7 @@ export const addIngredientSchema = z
     ingredientId: z.string().uuid("올바른 재료 ID가 아닙니다.").optional(),
     customName: z.string().trim().min(1, "재료명을 입력해주세요.").max(50).optional(),
     expiryDate: dateStringSchema.optional(),
+    storageLocation: z.enum(["냉장", "냉동", "실온"]).optional(),
   })
   .refine((data) => Boolean(data.ingredientId) !== Boolean(data.customName), {
     message: "ingredientId 또는 customName 중 하나만 지정해야 합니다.",

@@ -1,11 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireUserForPage } from "@/lib/utils/require-user";
-import { listFridgeItems } from "@/lib/services/fridge-service";
+import { listFridgeItems, initializeBasicSeasonings } from "@/lib/services/fridge-service";
 import { FridgeView } from "@/components/features/FridgeView";
 
 export default async function FridgePage() {
   const supabase = await createClient();
   const user = await requireUserForPage(supabase);
+
+  await initializeBasicSeasonings(supabase, user.id);
   const items = await listFridgeItems(supabase, user.id);
 
   return (
