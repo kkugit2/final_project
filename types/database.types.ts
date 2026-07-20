@@ -36,6 +36,7 @@ export interface Database {
           custom_name: string | null;
           is_owned: boolean;
           expiry_date: string | null;
+          storage_location: "냉장" | "냉동" | "실온";
           updated_at: string;
         };
         Insert: {
@@ -45,6 +46,7 @@ export interface Database {
           custom_name?: string | null;
           is_owned?: boolean;
           expiry_date?: string | null;
+          storage_location?: "냉장" | "냉동" | "실온";
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["user_fridge"]["Insert"]>;
