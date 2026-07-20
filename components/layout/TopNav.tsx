@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
@@ -15,8 +16,11 @@ export function TopNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="hidden h-16 border-b border-border bg-white lg:flex">
+    <nav className="hidden border-b border-border bg-white lg:flex">
       <div className="mx-auto flex w-full max-w-[1200px] items-center gap-8 px-8">
+        <Link href="/fridge" className="hidden md:flex items-center shrink-0 py-2">
+          <Image src="/logo.png" alt="AI 기반 냉장고 재료 레시피 추천" width={160} height={160} priority />
+        </Link>
         {TABS.map((tab) => {
           const isActive = pathname === tab.href || pathname.startsWith(`${tab.href}/`);
           return (

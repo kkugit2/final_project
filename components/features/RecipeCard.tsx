@@ -1,4 +1,5 @@
-import Link from "next/link";
+"use client";
+
 import Image from "next/image";
 import { Card } from "@/components/common/Card";
 import { Badge } from "@/components/common/Badge";
@@ -13,10 +14,19 @@ export interface RecipeCardData {
   missingIngredientNames: string[];
 }
 
-export function RecipeCard({ recipe }: { recipe: RecipeCardData }) {
+export function RecipeCard({
+  recipe,
+  onOpenDetail,
+}: {
+  recipe: RecipeCardData;
+  onOpenDetail: (id: string) => void;
+}) {
   return (
-    <Link href={`/recipes/${recipe.id}`}>
-      <Card className="flex h-full flex-col overflow-hidden">
+    <button
+      onClick={() => onOpenDetail(recipe.id)}
+      className="w-full text-left"
+    >
+      <Card className="flex h-full flex-col overflow-hidden hover:shadow-lg transition-shadow">
         <div className="relative aspect-video w-full bg-lightGray">
           {recipe.imageUrl && (
             <Image
@@ -40,6 +50,6 @@ export function RecipeCard({ recipe }: { recipe: RecipeCardData }) {
           )}
         </div>
       </Card>
-    </Link>
+    </button>
   );
 }

@@ -1,15 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireUserForPage } from "@/lib/utils/require-user";
 import { getMypageSummary } from "@/lib/services/mypage-service";
+import { getUserPreferences } from "@/lib/services/preference-service";
 import { LogoutButton } from "@/components/features/LogoutButton";
 import { MyPageRecentList } from "@/components/features/MyPageRecentList";
 import { MyPageFavoriteList } from "@/components/features/MyPageFavoriteList";
 import { MyPageInsightCard } from "@/components/features/MyPageInsightCard";
+import { PreferencesSection } from "@/components/features/PreferencesSection";
 
 export default async function MyPage() {
   const supabase = await createClient();
   const user = await requireUserForPage(supabase);
   const summary = await getMypageSummary(supabase, user.id);
+  const preferences = await getUserPreferences(supabase, user.id);
 
   return (
     <div className="flex flex-col gap-6">
@@ -19,6 +22,8 @@ export default async function MyPage() {
         <p className="text-xs font-medium text-disabledGray">로그인 이메일</p>
         <p className="mt-1 text-base text-darkGray">{user.email}</p>
       </div>
+
+      <PreferencesSection initialPreferences={preferences} />
 
       <section>
         <h2 className="mb-2 text-lg font-semibold text-darkGray">최근 조회한 요리</h2>

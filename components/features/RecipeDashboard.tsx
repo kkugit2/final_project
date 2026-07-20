@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { RecipeFilterBar, type RecipeFilterValue } from "./RecipeFilterBar";
 import { RecipeCard, type RecipeCardData } from "./RecipeCard";
+import { RecipeDetailModal } from "./RecipeDetailModal";
 
 export function RecipeDashboard() {
   const [filter, setFilter] = useState<RecipeFilterValue>("all");
   const [category, setCategory] = useState<string | null>(null);
   const [items, setItems] = useState<RecipeCardData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -45,10 +47,20 @@ export function RecipeDashboard() {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {items.map((recipe) => (
-            <RecipeCard key={recipe.id} recipe={recipe} />
+            <RecipeCard
+              key={recipe.id}
+              recipe={recipe}
+              onOpenDetail={setSelectedRecipeId}
+            />
           ))}
         </div>
       )}
+
+      <RecipeDetailModal
+        recipeId={selectedRecipeId || ""}
+        isOpen={selectedRecipeId !== null}
+        onClose={() => setSelectedRecipeId(null)}
+      />
     </div>
   );
 }
