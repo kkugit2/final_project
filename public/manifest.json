@@ -1,0 +1,33 @@
+{
+  "name": "냉장고 재료 기반 레시피 추천",
+  "short_name": "있조",
+  "description": "보유한 식재료로 지금 바로 만들 수 있는 요리를 추천받는 서비스",
+  "start_url": "/fridge",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1a5b8d",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "32x32",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "160x160",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["food", "productivity"],
+  "screenshots": [
+    {
+      "src": "/logo.png",
+      "sizes": "160x160",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ]
+}

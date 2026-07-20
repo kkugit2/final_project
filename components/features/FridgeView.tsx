@@ -34,10 +34,17 @@ function toItemView(row: FridgeItemRow): FridgeItemView & { category: string } {
     isOwned: row.is_owned,
     expiryDate: row.expiry_date,
     category: row.ingredient?.category ?? CUSTOM_CATEGORY_LABEL,
+    isBasicSeasoning: row.ingredient?.is_basic_seasoning ?? false,
   };
 }
 
-export function FridgeView({ initialItems }: { initialItems: FridgeItemRow[] }) {
+export function FridgeView({
+  initialItems,
+  showExpiryFields = true,
+}: {
+  initialItems: FridgeItemRow[];
+  showExpiryFields?: boolean;
+}) {
   const [items, setItems] = useState(initialItems);
   const [panelOpen, setPanelOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<StorageLocation>("실온");
@@ -171,6 +178,7 @@ export function FridgeView({ initialItems }: { initialItems: FridgeItemRow[] }) 
             onToggle={handleToggle}
             onRemove={handleRemove}
             onExpiryChange={handleExpiryChange}
+            showExpiryFields={showExpiryFields}
           />
         ))
       )}
