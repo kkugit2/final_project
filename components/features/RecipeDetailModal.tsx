@@ -69,7 +69,7 @@ export function RecipeDetailModal({
 
   const handleSheetDragStart = useCallback((e: React.TouchEvent | React.MouseEvent) => {
     setIsDragging(true);
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const clientY = 'touches' in e ? e.touches[0]?.clientY ?? 0 : e.clientY;
     setDragStart(clientY);
   }, []);
 
@@ -95,7 +95,8 @@ export function RecipeDetailModal({
 
   const handleTouchMove = useCallback(
     (e: TouchEvent) => {
-      handleDragMove(e.touches[0].clientY);
+      const clientY = e.touches[0]?.clientY ?? 0;
+      handleDragMove(clientY);
     },
     [handleDragMove]
   );
